@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+	<title>Ctl.Data - Open Source at CTL Global, Inc.</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+    <a href="index.html"><img src="logo-sm.png" alt="CTL Global, Inc. logo"></a>
+	<h1>Ctl.Data</h1>
+
+    <div class="row">
+		<div class="col-md-9">
+            <p>
+                As much as we prefer high-tech solutions like web services, technologies like CSV are one of the
+                simplest formats to get started with and are deeply embedded in many industries.
+            </p>
+
+            <p>
+                Ctl.Data was designed to deal with real-world data files: ones which might be compiled by hand in
+                Excel, or by inconsistent code. Beyond simple format-level errors, it's also made to work with data
+                errors by integrating .NET's standard validation and providing low-level diagnostics to make error
+                reporting easy.
+            </p>
+
+            <p>
+                Robustness takes first priority, with a number of unit tests providing wide code coverage. A close
+                second is performance. Hand-written parsers give wicked fast reading, and are I/O agnostic to
+                provide both blocking and fully async implementations, fully native without just throwing stuff on
+                a task pool. Serialization and validation skip slow reflection and use code generation to ensure these
+                conveniences don't slow things down.
+            </p>
+        </div>
+        <div class="col-md-3 sources">
+            <p>
+                Source code at
+                <a href="http://github.com/ctl-global/ctl-data/">GitHub</a>
+            </p>
+            <p>
+                Binaries on NuGet via
+                <a href="http://www.nuget.org/packages/Ctl.Data/">Ctl.Data</a>
+                <a href="http://www.nuget.org/packages/Ctl.Data.Excel/">Ctl.Data.Excel</a>
+            </p>
+        </div>
+    </div>
+
+
+    <h2>Getting started</h2>
+
+    <p>
+        The simplest way to read data is via the <code>Formats</code> utility class:
+    </p>
+
+    <pre>using Ctl.Data;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+
+class MyPoco
+{
+    public int Foo { get; set; }
+    public string Bar { get; set; }
+    public DateTime Baz { get; set; }
+
+    public static IEnumerable&lt;MyPoco&gt; FromFile(string filePath)
+    {
+        return Formats.Csv.ReadObjects&lt;MyPoco&gt;(filePath);
+    }
+}</pre>
+
+    <p>
+        Ctl.Data provides POCO serialization for either properties or fields, controlled by the same data
+        annotations used by ASP.NET MVC and Entity Framework in addition to some new ones:
+    </p>
+
+    <pre>class MyPoco
+{
+    public int Foo { get; set; }
+
+    [Required]
+    public string Bar { get; set; }
+
+    [DataFormat("yyyy-MM-dd")]
+    public DateTime Baz { get; set; }
+
+    public static IEnumerable&lt;MyPoco&gt; FromFile(string filePath)
+    {
+        return Formats.Csv.ReadObjects&lt;MyPoco&gt;(filePath, validate: true);
+    }
+}</pre>
+
+    <p>
+        Any errors in parsing or subsequent validation will result in one of <code>ParseException</code>,
+        <code>SerializationException</code>, or <code>ValidationException</code> being thrown:
+    </p>
+
+    <pre>class ParseException : Exception
+{
+    public long LineNumber { get; }
+    public long ColumnNumber { get; }
+}
+
+class SerializationException : ParseException
+{
+    public string MemberName { get; }
+    public string InvalidValue { get; }
+}
+
+class ValidationException : ParseException
+{
+    public IEnumerable&lt;ValidationResult&gt; Errors { get; }
+    public object Object { get; }
+}</pre>
+
+    <p>
+        Writing records is similarly simple:
+    </p>
+
+    <pre>void WriteRecords(TextWriter tw, IEnumerable&lt;MyPoco&gt; records)
+{
+    Formats.Csv.Write(tw, records);
+}</pre>
+
+    <h2>Data annotation support</h2>
+
+    <table class="table">
+        <tr>
+            <th>Attribute</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>Column</code></td>
+            <td>Controls both the name of the column and, optionally, the ordering of columns.</td>
+        </tr>
+        <tr>
+            <td><code>AdditionalNames</code></td>
+            <td>Provides alternate names to the primary one specified with <code>Column</code>.</td>
+        </tr>
+        <tr>
+            <td><code>Position</code></td>
+            <td>
+                Defines indexed positions for columns, used when reading headerless files. If specified,
+                overrides ordering provided by the <code>Column</code> attribute.
+            </td>
+        </tr>
+        <tr>
+            <td><code>DataFormat</code></td>
+            <td>Specifies format strings, number styles, and <code>DateTime</code> styles.</td>
+        </tr>
+        <tr>
+            <td><code>Fixed</code></td>
+            <td>
+                Defines the position and length of fixed-width data. If not specified, field width must be
+                defined through other means below for the fixed-width format to work.
+            </td>
+        </tr>
+        <tr>
+            <td><code>StringLength</code></td>
+            <td>Defines the length of fixed-width data, as well as performing usual validation.</td>
+        </tr>
+        <tr>
+            <td><code>MaxLength</code></td>
+            <td>Defines the length of fixed-width data, as well as performing usual validation.</td>
+        </tr>
+        <tr>
+            <td><code>NotMapped</code></td>
+            <td>Prevents the member from being parsed or written.</td>
+        </tr>
+    </table>
+
+    <p>
+        In addition to these annotations, validation is controlled by the POCO either implementing
+        <code>IValidatableObject</code> or having <code>ValidationAttribute</code> annotations present.
+    </p>
+
+    <h2>Advanced usage</h2>
+
+    <p>
+        At times, it might be valuable to not throw exceptions in the event of a validation error. Perhaps
+        these records would be logged and reported back to the user, while the good records would still
+        be processed. To accomplish this, the <code>ObjectValue</code> class is used.
+    </p>
+
+    <p>
+        <code>ObjectValue</code> gives row, line, and column numbers that a row was parsed on, as well as
+        any errors occurred during parsing. It does not throw exceptions unless you try to retrieve the
+        deserialized object when an error occurred.
+    </p>
+
+    <p>
+        Again, the <code>Formats</code> class is generally going to provide everything needed for this:
+    </p>
+
+    <pre>ObjectValue&lt;MyPoco&gt;[] records =
+    Formats.Csv.ReadObjectValues&lt;MyPoco&gt;(filePath, validate: true).ToArray();
+
+// filter for good values.
+
+IEnumerable&lt;MyPoco&gt; goodValues =
+    from record in records
+    where record.Exception == null
+    select record.Value;
+
+// filter for deserialization errors.
+
+var deserializationErrors =
+    from record in records
+    where record.Exception != null
+    from exception in record.Exception.InnerExceptions
+                          .OfType&lt;Ctl.Data.SerializationException&gt;()
+    select new
+    {
+        RowNumber = record.RowNumber,
+        LineNumber = exception.LineNumber,
+        ColumnNumber = exception.ColumnNumber,
+        InvalidMember = exception.MemberName,
+        InvalidValue = exception.InvalidValue,
+        ErrorMessage = exception.InnerException.Message
+    };
+
+// filter for validation errors.
+
+var badValidationRecords =
+    from record in records
+    where record.Exception != null
+    from exception in record.Exception.InnerExceptions
+                          .OfType&lt;Ctl.Data.ValidationException&gt;()
+    from validationError in exception.Errors
+    from memberName in validationError.MemberNames
+    select new
+    {
+        RowNumber = record.RowNumber,
+        LineNumber = exception.LineNumber,
+        ColumnNumber = exception.ColumnNumber,
+        InvalidMember = memberName,
+        ErrorMessage = validationError.ErrorMessage
+    };</pre>
+
+    <p>
+        Another advanced usage is for a variation of a format that the <code>Formats</code> class doesn't cover.
+        This class is intended to be a quick and easy utility class for common formats, but it can be bypassed
+        when needed.
+    </p>
+
+    <p>
+        One such need would be to, say, parse tab-delimited files that don't have a header row:
+    </p>
+
+    <pre>IEnumerable&lt;MyPoco&gt; FromFile(string filePath)
+{
+    using(TextReader tr = new StreamReader(filePath))
+    {
+        var csv = new CsvReader&lt;MyPoco&gt;(tr, separator: '\t', readHeader: false);
+
+        foreach(ObjectValue&lt;MyPoco&gt; v in csv.AsEnumerable())
+        {
+            yield return v.Value;
+        }
+    }
+}</pre>
+
+    <h2>Asynchronous usage</h2>
+
+    <p>
+        Ctl.Data allows fully asynchronous workflows. To do this, it integrates with Microsoft's
+        <a href="http://www.nuget.org/packages/Ix-Async/">Ix-Async</a> package, which provides an
+        <code>IAsyncEnumerable</code> class along with full LINQ support.
+    </p>
+
+    <p>
+        Making use of async is as simple as calling an <code>Async</code> variation of the methods:
+    </p>
+
+    <pre>string[] bars =
+    await (from record in Formats.Csv.ReadObjectsAsync&lt;MyPoco&gt;(filePath)
+           where record.Foo == 123
+           select record.Bar).ToArray(token);</pre>
+
+	<div id="footer">
+		&copy; CTL Global, Inc.
+	</div>
+</div>
+</body>
+</html>
