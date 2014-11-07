@@ -1,0 +1,15 @@
+body
+{
+	background:#fafafa;color:#333;
+	font-family: Calibri, Candara, Segoe, 'Segoe UI', Optima, Arial, sans-serif;
+	margin:0;
+	padding:15px 0 15px 0;
+}
+pre
+{
+	font-family: Consolas, monaco, monospace;
+}
+#footer
+{
+	font-size:80%;text-align:center;color:#444;margin-top:4em;
+}
