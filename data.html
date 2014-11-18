@@ -14,15 +14,20 @@
     <div class="row">
 		<div class="col-md-9">
             <p>
+                Ctl.Data provides parsers for CSV (including its variants like tab-delimited pipe-delimited, etc.),
+                fixed-width, and XLSX files (through <a href="http://epplus.codeplex.com/">EPPlus</a>).
+            </p>
+
+            <p>
                 As much as we prefer high-tech solutions like web services, technologies like CSV are one of the
                 simplest formats to get started with and are deeply embedded in many industries.
             </p>
 
             <p>
                 Ctl.Data was designed to deal with real-world data files: ones which might be compiled by hand in
-                Excel, or by inconsistent code. Beyond simple format-level errors, it's also made to work with data
-                errors by integrating .NET's standard validation and providing low-level diagnostics to make error
-                reporting easy.
+                Excel, or by inconsistent code. Beyond simply reading/writing these formats, it provides full
+                diagnostics in the form of line and column numbers, serialization, and validation through .NET's
+                standard facilities.
             </p>
 
             <p>
@@ -71,8 +76,9 @@ class MyPoco
 }</pre>
 
     <p>
-        Ctl.Data provides POCO serialization for either properties or fields, controlled by the same data
-        annotations used by ASP.NET MVC and Entity Framework in addition to some new ones:
+        Ctl.Data provides POCO serialization for either properties or fields.
+        When working with a headered format, columns can be in any order.
+        Serialization and validation is controlled by the same data annotations used by ASP.NET MVC and Entity Framework in addition to some new ones:
     </p>
 
     <pre>class MyPoco
@@ -261,6 +267,32 @@ var badValidationRecords =
     }
 }</pre>
 
+    <h2>Parsing raw data without POCO</h2>
+
+    <p>
+        Sometimes we don't know our data's format ahead of time and need to just parse raw records.
+        To do so, the <code>CsvReader</code> class is used without the generic parameter <code>&lt;T&gt;</code>:
+    </p>
+
+    <pre>TextReader tr = ...;
+RowValue[] rows = new CsvReader(tr).AsEnumerable().ToArray();</pre>
+
+    <p>
+        Similarly to the POCO scenarios, the returned records contain exactly where the values originated from:
+    </p>
+
+    <pre>class RowValue : List&lt;ColumnValue&gt;
+{
+    public long RowNumber { get; set; }
+}
+
+class ColumnValue
+{
+    public string Value { get; set; }
+    public long LineNumber { get; set; }
+    public long ColumnNumber { get; set; }
+}</pre>
+
     <h2>Asynchronous usage</h2>
 
     <p>
@@ -277,6 +309,173 @@ var badValidationRecords =
     await (from record in Formats.Csv.ReadObjectsAsync&lt;MyPoco&gt;(filePath)
            where record.Foo == 123
            select record.Bar).ToArray(token);</pre>
+
+    <h2>Performance comparison</h2>
+
+    <p>
+        To test performance between iterations, we've developed a very simple benchmark using
+        <a href="http://www.maxmind.com/download/worldcities/worldcitiespop.txt.gz">worldcitiespop.txt</a>
+        from <a href="http://www.maxmind.com/">Maxmind</a>, a 144MB CSV file.
+    </p>
+
+    <p>
+        I scoured NuGet for the most popular CSV parsers to get a good comparison. I found a large number
+        with only a small amount of downloads that I haven't included for time reasons &mdash; if there's
+        one that's particularly fast that you would like included, please
+        <a href="https://github.com/ctl-global/ctl-data/issues">file an issue</a> and I'll do my best
+        to update this.
+    </p>
+
+    <div style="max-width:710px;margin-bottom:1em">
+        <img src="data-benchmark.png" style="width:100%">
+    </div>
+
+    <table class="table table-striped">
+        <tr>
+            <th>Implementation</th>
+            <th>Records per second</th>
+            <th>Time per record (in nanoseconds)</th>
+            <th>Comparative Speed</th>
+        </tr>
+        <tr>
+            <td>Ctl.Data (raw)</td>
+            <td>3,066,780</td>
+            <td>326</td>
+            <td>100%</td>
+        </tr>
+        <tr>
+            <td>Ctl.Data (raw async)</td>
+            <td>2,763,157</td>
+            <td>362</td>
+            <td>90%</td>
+        </tr>
+        <tr>
+            <td>uniVocity (raw IKVM)</td>
+            <td>1,554,540</td>
+            <td>643</td>
+            <td>51%</td>
+        </tr>
+        <tr>
+            <td>Ctl.Data (POCO)</td>
+            <td>1,241,820</td>
+            <td>805</td>
+            <td>40%</td>
+        </tr>
+        <tr>
+            <td>Ctl.Data (POCO async)</td>
+            <td>1,175,895</td>
+            <td>850</td>
+            <td>38%</td>
+        </tr>
+
+        <tr>
+            <td>LinqToCSV (raw)</td>
+            <td>1,161,443</td>
+            <td>861</td>
+            <td>38%</td>
+        </tr>
+        <tr>
+            <td>CsvHelper (raw)</td>
+            <td>791,888</td>
+            <td>1,261</td>
+            <td>26%</td>
+        </tr>
+        <tr>
+            <td>CsvHelper (POCO)</td>
+            <td>507,525</td>
+            <td>1,970</td>
+            <td>17%</td>
+        </tr>
+        <tr>
+            <td>LinqToCSV (POCO)</td>
+            <td>268,019</td>
+            <td>3,731</td>
+            <td>9%</td>
+        </tr>
+        <tr>
+            <td>TextFieldParser</td>
+            <td>143,240</td>
+            <td>6,981</td>
+            <td>5%</td>
+        </tr>
+    </table>
+
+    <p>
+        Benchmarking was performed by first warming up and then calling the code until it
+        couldn't return a better time after five tries. They were all done in separate processes to ensure
+        they don't affect each-other. File contents were read ahead of time so all results are purely
+        in-memory. The benchmark system was an Intel 4770 with 32GB of 2400MHz DDR3 and 64-bit .NET 4.5.2
+        on Windows 8.1. The code is available at <a href="https://github.com/ctl-global/ctl-data">Github</a>.
+    </p>
+
+    <p>
+        The results should largely speak for themselves, with Ctl.Data reading records well over twice as
+        fast as <a href="http://www.nuget.org/packages/LinqToCsv/1.5.0">LinqToCSV</a>.
+        Similarly, its POCO support clocked over twice as fast as
+        <a href="http://www.nuget.org/packages/CsvHelper/2.8.4">CsvHelper</a> and even remained competitive
+        with LinqToCSV's raw performance. VB.NET's built-in <code>TextFieldParser</code> trailed well behind
+        the others.
+    </p>
+
+    <p>
+        For kicks I included <a href="https://github.com/uniVocity">uniVocity</a>, the project which
+        inspired this benchmark. It's a Java library and was run natively under .NET with the help of IKVM.
+        I have no idea what performance it sees under the JVM, but it's my understanding that IKVM is
+        generally very similar.
+    </p>
+
+    <p>
+        Beyond performance, Ctl.Data also provides the best diagnosics information with textual line and
+        column numbers being given for each column value. In the case of <code>TextFieldParser</code>, there
+        was only record-level line information. LinqToCSV trims whitespace from values which may or may not
+        be desirable, but otherwise parsed the fairly simple file identically.
+    </p>
+
+    <p>
+        Another interesting data point is Ctl.Data's async support. As no other implementation has async
+        support at this time, this benchmark is geared to provide best-case times for synchronous (blocking)
+        implementations by performing a single operation with no I/O at high priority and without regard for
+        any larger system. While best for blocking, this is actually a worst-case situation for async which
+        will show its largest improvement in a highly concurrent, I/O-bound environment. Thus, the
+        performance differences here between sync/async are showing only the overhead that async will
+        introduce and not the benefit. Still, it remains extremely competitive.
+    </p>
+
+    <h2>CSV implementation</h2>
+
+    <p>
+        Ctl.Data's CSV parser is designed to perfectly output and parse files compliant with
+        <a href="http://www.rfc-editor.org/rfc/rfc4180.txt">RFC 4180</a>. Not all CSV is created equal,
+        however, so it does implement some safeguards for best-effort parsing of non-compliant files. In
+        all cases, the parser takes the safest approach: if it's not sure, it will give an error rather
+        than return possibly bad data.
+    </p>
+
+    <p>
+        The RFC demands any value containing quotes be escaped and quoted. In some cases, it is safe to
+        relax this requirement while safely parsing. Consider this non-compliant file which has an obvious
+        intent:
+    </p>
+
+    <pre>Name,Address
+Dennis "dmr" Ritchie,Foo Ln.</pre>
+
+    <p>
+        Related but somewhat more tricky is a value that is quoted but with incorrect escaping. This one
+        broke every single parser I've tested, but again in some cases, it's possible for Ctl.Data to
+        correctly interpret. This one can be a little dangerous to assume, so it's left as an
+        off-by-default configuration in the <code>CsvReader</code> constructor:
+    </p>
+
+    <pre>Name,Address
+"Dennis "dmr" Ritchie",Foo Ln.</pre>
+
+    <h2>Contributing and help</h2>
+
+    <p>
+        Development of this library takes place on <a href="https://github.com/ctl-global/ctl-data">Github</a>.
+        Bug reports, feature requests, and pull requests will be responded to as time permits.
+    </p>
 
 	<div id="footer">
 		&copy; CTL Global, Inc.
